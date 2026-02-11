@@ -22,13 +22,20 @@ export async function POST(req: Request) {
     let total = 0;
     const merged = await PDFDocument.create();
 
-    for (const f of files) {
-      if (!(f instanceof File)) continue;
+    for (const item of files) {
+      const f = item as unknown as {
+        type?: string;
+        size?: number;
+        arrayBuffer?: () => Promise<ArrayBuffer>;
+      };
+
+      if (typeof f.arrayBuffer !== "function") continue;
+
       if (f.type !== "application/pdf") {
         return NextResponse.json({ error: "Only PDFs allowed" }, { status: 400 });
       }
 
-      total += f.size;
+      total += f.size ?? 0;
       if (total > MAX_TOTAL_BYTES) {
         return NextResponse.json({ error: "Files too large" }, { status: 413 });
       }
@@ -40,15 +47,19 @@ export async function POST(req: Request) {
     }
 
     const out = await merged.save();
+    const body = Buffer.from(out);
 
-    return new NextResponse(out, {
+    return new NextResponse(body, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="merged.pdf"',
         "Cache-Control": "no-store",
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Merge failed" }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "Merge failed", detail: e?.message ?? "unknown" },
+      { status: 500 }
+    );
   }
 }
